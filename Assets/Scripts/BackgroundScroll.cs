@@ -3,33 +3,53 @@ using UnityEngine;
 public class BackgroundScroll : MonoBehaviour
 {
     [Header("스크롤 속도")]
-    [SerializeField] private float scrollSpeed = 0.2f;
+    [SerializeField] private float scrollSpeed = 3f;
 
-    private Material backgroundMaterial;
-    private Vector2 savedOffset;
+    private float backgroundHeight;
+    private Transform myTransform;
+    private Transform cloneTransform;
 
     void Start()
     {
-        // Quad에 적용된 Renderer 컴포넌트에서 머티리얼을 가져옵니다.
-        MeshRenderer meshRenderer = GetComponent<MeshRenderer>();
-        if (meshRenderer != null)
-        {
-            backgroundMaterial = meshRenderer.material;
-        }
+        myTransform = transform;
+        SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
 
-        // 현재 오프셋 값을 초기화합니다.
-        savedOffset = backgroundMaterial.mainTextureOffset;
+        if (spriteRenderer != null)
+        {
+            // 1. 이미지의 실제 세로 크기(Height) 계산
+            backgroundHeight = spriteRenderer.bounds.size.y;
+
+            // 2. 맵 루프를 위해 똑같은 이미지를 위에 하나 더 복제(Clone) 생성
+            GameObject clone = Instantiate(gameObject, myTransform.parent);
+            Destroy(clone.GetComponent<BackgroundScroll>()); // 무한 복제 방지
+
+            cloneTransform = clone.transform;
+            // 복제본을 원본 바로 위에 딱 붙여서 배치
+            cloneTransform.position = myTransform.position + Vector3.up * backgroundHeight;
+        }
+        else
+        {
+            Debug.LogError("BackgroundScroll: Sprite Renderer를 찾을 수 없습니다!");
+        }
     }
 
     void Update()
     {
-        // 시간에 따라 Y축 오프셋 값을 증가시킵니다. (종스크롤 타입)
-        float newOffsetY = Mathf.Repeat(Time.time * scrollSpeed, 1f);
+        if (backgroundHeight <= 0) return;
 
-        // 새로운 오프셋 값을 벡터로 만듭니다.
-        Vector2 offset = new Vector2(savedOffset.x, newOffsetY);
+        // 3. 두 개의 배경을 동시에 아래로 이동
+        float moveAmount = scrollSpeed * Time.deltaTime;
+        myTransform.position += Vector3.down * moveAmount;
+        cloneTransform.position += Vector3.down * moveAmount;
 
-        // 머티리얼에 오프셋을 적용하여 이미지를 움직입니다.
-        backgroundMaterial.mainTextureOffset = offset;
+        // 4. 화면 아래로 완전히 내려가면 다시 위로 올려서 무한 루프 구현
+        if (myTransform.position.y <= -backgroundHeight)
+        {
+            myTransform.position = cloneTransform.position + Vector3.up * backgroundHeight;
+        }
+        if (cloneTransform.position.y <= -backgroundHeight)
+        {
+            cloneTransform.position = myTransform.position + Vector3.up * backgroundHeight;
+        }
     }
 }
