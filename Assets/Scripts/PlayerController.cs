@@ -3,83 +3,59 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("이동 설정")]
-    [SerializeField] private float moveSpeed = 7f;
+    [SerializeField] private float moveSpeed = 7f; // 비행기 이동 속도
 
-    [Header("최적화 배경 설정")]
-    [Tooltip("Hierarchy 창에 있는 '14' 오브젝트(사막 맵)를 여기에 드래그해서 연결하세요.")]
-    [SerializeField] private SpriteRenderer backgroundRenderer;
-
-    private float minX, maxX;
-    private float minY, maxY;
-
-    void Start()
-    {
-        float objectWidth = 0.5f;
-        float objectHeight = 0.5f;
-
-        SpriteRenderer spriteRenderer = GetComponent<SpriteRenderer>();
-        if (spriteRenderer != null)
-        {
-            objectWidth = spriteRenderer.bounds.extents.x;
-            objectHeight = spriteRenderer.bounds.extents.y;
-        }
-
-        // [변경] GameObject.Find 문자열 탐색을 완전히 지우고, 드래그 연결된 렌더러를 바로 사용 (가비지 0B)
-        if (backgroundRenderer != null)
-        {
-            Bounds mapBounds = backgroundRenderer.bounds;
-            minX = mapBounds.min.x + objectWidth;
-            maxX = mapBounds.max.x - objectWidth;
-        }
-        else
-        {
-            Camera mainCam = Camera.main;
-            if (mainCam != null)
-            {
-                float camWidth = mainCam.orthographicSize * mainCam.aspect;
-                minX = -camWidth + objectWidth;
-                maxX = camWidth - objectWidth;
-            }
-            Debug.LogWarning("PlayerController: 배경 렌더러가 지정되지 않아 카메라 기준으로 좌우를 제한합니다.");
-        }
-
-        Camera mainCamera = Camera.main;
-        if (mainCamera != null)
-        {
-            float camHeight = mainCamera.orthographicSize;
-            Vector3 camPosition = mainCamera.transform.position;
-
-            minY = camPosition.y - camHeight + objectHeight;
-            maxY = camPosition.y + camHeight - objectHeight;
-        }
-    }
+    [Header("사격 설정")]
+    public Transform firePoint;         // 플레이어 비행기 총구 위치
+    public float attackCooldown = 0.2f; // 연사 속도 (0.2초마다 발사)
+    private float attackTimer = 0f;
 
     void Update()
     {
-        Move();
+        // 1. 키보드 이동 로직 (방향키 및 WASD 입력 감지)
+        float h = Input.GetAxisRaw("Horizontal"); // 좌우 입력 (-1, 0, 1)
+        float v = Input.GetAxisRaw("Vertical");   // 위아래 입력 (-1, 0, 1)
+
+        // 대각선 이동 시 속도가 빨라지지 않도록 방향 벡터 정규화(normalized) 처리
+        Vector3 moveDir = new Vector3(h, v, 0f).normalized;
+
+        // 등속 운동으로 플레이어 기체 좌표 이동
+        transform.position += moveDir * moveSpeed * Time.deltaTime;
+
+
+        // 2. 스페이스바 사격 타이머 로직 (기존 유지)
+        attackTimer += Time.deltaTime;
+
+        if (Input.GetKey(KeyCode.Space) && attackTimer >= attackCooldown)
+        {
+            Fire();
+            attackTimer = 0f;
+        }
     }
 
-    void LateUpdate()
+    void Fire()
     {
-        RestrictMovement();
+        if (firePoint != null)
+        {
+            GameObject bullet = ProjectilePool.Instance.GetProjectile();
+            if (bullet != null)
+            {
+                bullet.transform.position = firePoint.position;
+
+                // 💡 [방향 고정 핵심] 총구 오브젝트의 회전값에 버그가 있더라도 
+                // 무조건 절대적인 앞방향(Z: 0도)으로 회전값을 강제 고정하여 위로 날아가게 만듭니다.
+                bullet.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
+
+                // 태그 설정 (기존 유지)
+                Projectile projectileScript = bullet.GetComponent<Projectile>();
+                if (projectileScript != null)
+                {
+                    projectileScript.ownerTag = "Player";
+                }
+
+                bullet.SetActive(true);
+            }
+        }
     }
 
-    private void Move()
-    {
-        // GetAxisRaw는 소수점 가비지 없이 정수(-1, 0, 1)만 튀어나오므로 안전합니다.
-        float moveX = Input.GetAxisRaw("Horizontal");
-        float moveY = Input.GetAxisRaw("Vertical");
-
-        // Vector3는 구조체(Value Type)라 스택 메모리를 써서 GC를 유발하지 않습니다.
-        Vector3 moveDirection = new Vector3(moveX, moveY, 0f).normalized;
-        transform.position += moveDirection * moveSpeed * Time.deltaTime;
-    }
-
-    private void RestrictMovement()
-    {
-        Vector3 viewPos = transform.position;
-        viewPos.x = Mathf.Clamp(viewPos.x, minX, maxX);
-        viewPos.y = Mathf.Clamp(viewPos.y, minY, maxY);
-        transform.position = viewPos;
-    }
 }
