@@ -25,7 +25,7 @@ public class AppearState : INpcState
             finalPos.y = targetY;
             npc.transform.position = finalPos;
 
-            npc.ChangeState(npc.CombatStateObj); // 💡 전투 상태로 자동 전환
+            npc.ChangeState(npc.CombatStateObj); // 전투 상태로 자동 전환
         }
     }
 
