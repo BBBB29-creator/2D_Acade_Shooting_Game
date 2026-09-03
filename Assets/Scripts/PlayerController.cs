@@ -2,6 +2,12 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
+    [Header("화면 제한 경계선")]
+    private const float MIN_X = -8.3f;
+    private const float MAX_X = 8.3f;
+    private const float MIN_Y = -4.4f;
+    private const float MAX_Y = 4.4f;
+
     [Header("이동 설정")]
     [SerializeField] private float moveSpeed = 7f; // 비행기 이동 속도
 
@@ -12,23 +18,29 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // 1. 키보드 이동 로직 (방향키 및 WASD 입력 감지)
+        // 방향키 및 WASD 입력 감지
         float h = Input.GetAxisRaw("Horizontal"); // 좌우 입력 (-1, 0, 1)
         float v = Input.GetAxisRaw("Vertical");   // 위아래 입력 (-1, 0, 1)
 
-        // 대각선 이동 시 속도가 빨라지지 않도록 방향 벡터 정규화(normalized) 처리
         Vector3 moveDir = new Vector3(h, v, 0f).normalized;
 
         // 등속 운동으로 플레이어 기체 좌표 이동
         transform.position += moveDir * moveSpeed * Time.deltaTime;
 
+        float clampedX = Mathf.Clamp(transform.position.x, MIN_X, MAX_X); // 좌우 경계선
+        float clampedY = Mathf.Clamp(transform.position.y, MIN_Y, MAX_Y); // 상하 경계선
 
-        // 2. 스페이스바 사격 타이머 로직 (기존 유지)
+        // 필터링 된 안전한 좌표를 플레이어 포지션에 최종 대입
+        transform.position = new Vector3(clampedX, clampedY, transform.position.z);
+
+
+        // 스페이스바 사격 타이머 로직
         attackTimer += Time.deltaTime;
 
         if (Input.GetKey(KeyCode.Space) && attackTimer >= attackCooldown)
         {
             Fire();
+            
             attackTimer = 0f;
         }
     }
@@ -37,25 +49,16 @@ public class PlayerController : MonoBehaviour
     {
         if (firePoint != null)
         {
-            GameObject bullet = ProjectilePool.Instance.GetProjectile();
+            // 최적화 통합 매니저에서 플레이어 탄환 요청
+            GameObject bullet = ObjectPoolManager.Instance.GetObject("PlayerBullet");
+
             if (bullet != null)
             {
                 bullet.transform.position = firePoint.position;
 
-                // 💡 [방향 고정 핵심] 총구 오브젝트의 회전값에 버그가 있더라도 
-                // 무조건 절대적인 앞방향(Z: 0도)으로 회전값을 강제 고정하여 위로 날아가게 만듭니다.
-                bullet.transform.rotation = Quaternion.Euler(0f, 0f, 0f);
-
-                // 태그 설정 (기존 유지)
-                Projectile projectileScript = bullet.GetComponent<Projectile>();
-                if (projectileScript != null)
-                {
-                    projectileScript.ownerTag = "Player";
-                }
-
-                bullet.SetActive(true);
+                // 무조건 절대적인 앞방향(Z: 0도)으로 회전값 강제 고정
+                bullet.transform.rotation = Quaternion.identity;
             }
         }
     }
-
 }
