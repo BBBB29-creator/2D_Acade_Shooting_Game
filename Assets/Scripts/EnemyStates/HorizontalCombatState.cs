@@ -52,14 +52,22 @@ public class HorizontalCombatState : INpcState
             npc.transform.position = clampedPos;
         }
 
-        // 3. 탄 발사 로직 (기존 유지)
+        // [사격 타이머 제어 및 딜레이 보정]
+        // 5연발 코루틴이 도는 중에는 타이머를 0으로 강제 고정(리셋)시켜 둡니다.
+        if (npc.IsBurstFiring)
+        {
+            attackTimer = 0f;
+            return; // 코루틴 도는 중에는 사격 타이머 연산 자체를 완전히 스킵
+        }
+
+
+        // attackTimer가 0f부터 다시 차오르기 때문에 자연스럽게 '공격 쿨타임'만큼의 확실한 딜레이(후딜)가 보장됩니다!
         attackTimer += Time.deltaTime;
         
-        while (attackTimer >= attackCooldown) // if 대신 while을 쓰고 차감형태로 정밀 제어
+        if (attackTimer >= attackCooldown)
         {
             npc.CurrentAttackPattern.ExecuteAttack(npc);
-            
-            attackTimer -= attackCooldown; // [수정] 0f 대신 정확히 쿨타임만큼만 차감합니다.
+            attackTimer = 0f;
         }
     }
 
