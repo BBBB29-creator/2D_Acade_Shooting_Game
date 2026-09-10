@@ -1,35 +1,166 @@
+using System.Collections;
 using UnityEngine;
 
 public class NormalEnemyController : MonoBehaviour
 {
-    [Header("=== 이동 설정 ===")]
-    [SerializeField] private float moveSpeed = 3f; // 화면 위에서 아래로 천천히 내려오는 속도
+    private EnemyCharacter enemyCharacter;
+    private EnemyNpc enemyNpc;
+
+    [Header("=== 이동 및 패턴 설정 ===")]
+    private float moveSpeed = 3f;
+
+    private enum AIPattern { DiagonalFormation, HitAndRun }
+    private AIPattern chosenPattern;
+
+    private Vector3 moveDirection;
+
+    private enum HitAndRunState { MoveDown, Shooting, Retreat }
+    private HitAndRunState currentHRState;
+    private float stopY;
 
     [Header("=== 화면 외 삭제 경계선 ===")]
-    // Full HD 16:9 해상도(카메라 Size 5) 기준 화면 맨 아래 바닥 너머 좌표입니다.
     private const float DESTROY_Y = -6.5f;
 
-    // 오브젝트 풀에서 꺼내져서 화면에 켜질 때마다 매번 실행되는 초기화 함수
+    private void Awake()
+    {
+        enemyCharacter = GetComponent<EnemyCharacter>();
+        enemyNpc = GetComponent<EnemyNpc>();
+    }
+
     private void OnEnable()
     {
-        // 새로 태어날 때마다 상태나 오차가 초기화되도록 방어선을 칩니다.
-        // (필요 시 나중에 체력 리셋 코드가 들어올 자리입니다)
+        if (enemyCharacter != null)
+        {
+            moveSpeed = enemyCharacter.GetMoveSpeed();
+        }
+
+        chosenPattern = (Random.value > 0.5f) ? AIPattern.DiagonalFormation : AIPattern.HitAndRun;
+
+        if (chosenPattern == AIPattern.DiagonalFormation)
+        {
+            // [기획적 보완] 화면 끝에서 태어나 바깥으로 증발하는 현상 완벽 차단!
+            // 스폰된 X 좌표가 왼쪽에 있다면, 무조건 우하향 대각선으로 화면 중심을 통과하게 만듭니다.
+            if (transform.position.x < 0)
+            {
+                // 오른쪽 아래 대각선 (X값을 0.8f로 늘려 더 과감하게 안쪽으로 파고들게 함)
+                moveDirection = new Vector3(0.8f, -1f, 0f).normalized;
+            }
+            // 스폰된 X 좌표가 오른쪽에 있다면, 무조건 좌하향 대각선으로 화면 중심을 통과하게 만듭니다.
+            else
+            {
+                // 왼쪽 아래 대각선
+                moveDirection = new Vector3(-0.8f, -1f, 0f).normalized;
+            }
+        }
+        else
+        {
+            stopY = Random.Range(2.5f, 4.5f);
+            currentHRState = HitAndRunState.MoveDown;
+        }
+
+        // 안전 지연 사격 루틴 시작
+        StartCoroutine(SafeInitAttackRoutine());
     }
+
+    // 💡 OnEnable 바로 밑에 새롭게 추가해 줄 안전지연 코루틴 함수입니다.
+    private IEnumerator SafeInitAttackRoutine()
+    {
+        // 유니티 시스템 내부에서 모든 매니저(오브젝트 풀 포함)가 완벽히 셋업될 때까지 딱 1프레임 쉼호흡합니다.
+        yield return null;
+
+        // 공장이 잘 켜졌는지 2차 검사
+        if (ObjectPoolManager.Instance == null) yield break;
+
+        // 1. 노말 적에게 새로 만든 플레이어 정밀 조준 패턴을 안전하게 장착합니다.
+        if (enemyNpc != null)
+        {
+            enemyNpc.SetAttackPattern(new PlayerTargetAttack());
+        }
+
+        // 2. 대각선 돌격 패턴일 경우, 이제 정상 가동하는 풀 매니저를 통해 조준탄 1발 사격!
+        if (chosenPattern == AIPattern.DiagonalFormation)
+        {
+            if (enemyNpc != null && enemyNpc.CurrentAttackPattern != null)
+            {
+                enemyNpc.CurrentAttackPattern.ExecuteAttack(enemyNpc);
+            }
+        }
+    }
+
 
     void Update()
     {
-        // 1. 다른 오브젝트나 회전값에 영향받지 않고, 무조건 절대적인 화면 아래(World 기준)로 전진합니다.
-        transform.Translate(Vector3.down * moveSpeed * Time.deltaTime, Space.World);
+        if (chosenPattern == AIPattern.DiagonalFormation)
+        {
+            UpdateDiagonalFormation();
+        }
+        else
+        {
+            UpdateHitAndRun();
+        }
+    }
 
-        // 2. 아래로 내려가다가 화면 아래 경계선(카메라 범위 밖)을 완전히 벗어났는지 체크합니다.
+    private void UpdateDiagonalFormation()
+    {
+        transform.Translate(moveDirection * moveSpeed * Time.deltaTime, Space.World);
+
         if (transform.position.y <= DESTROY_Y)
         {
-            // 3. 4중 방어막을 갖춘 우리 풀 매니저에게 나(노말 적)를 안전하게 반환하라고 요청합니다.
-            // (가비지 가드 및 NullReferenceException이 차단됩니다)
-            if (ObjectPoolManager.Instance != null)
-            {
-                ObjectPoolManager.Instance.ReleaseObject(gameObject, "NormalEnemy");
-            }
+            ReturnToPool();
+        }
+    }
+
+    private void UpdateHitAndRun()
+    {
+        switch (currentHRState)
+        {
+            case HitAndRunState.MoveDown:
+                transform.Translate(Vector3.down * moveSpeed * Time.deltaTime, Space.World);
+                if (transform.position.y <= stopY)
+                {
+                    transform.position = new Vector3(transform.position.x, stopY, 0f);
+                    currentHRState = HitAndRunState.Shooting;
+                    StartCoroutine(AttackAndRetreatRoutine());
+                }
+                break;
+
+            case HitAndRunState.Retreat:
+                transform.Translate(Vector3.up * (moveSpeed * 1.5f) * Time.deltaTime, Space.World);
+                if (transform.position.y > 8f)
+                {
+                    ReturnToPool();
+                }
+                break;
+        }
+    }
+
+    private IEnumerator AttackAndRetreatRoutine()
+    {
+        // 정지 상태에서도 새로 주입된 조준 패턴으로 딱 1발 정밀 사격!
+        if (enemyNpc != null && enemyNpc.CurrentAttackPattern != null)
+        {
+            enemyNpc.CurrentAttackPattern.ExecuteAttack(enemyNpc);
+        }
+
+        yield return new WaitForSeconds(1.2f);
+        currentHRState = HitAndRunState.Retreat;
+    }
+
+    private void ReturnToPool()
+    {
+        StopAllCoroutines();
+
+        if (enemyCharacter != null)
+        {
+            enemyCharacter.ExecuteDeath();
+        }
+        else if (ObjectPoolManager.Instance != null)
+        {
+            ObjectPoolManager.Instance.ReleaseObject(gameObject, "NormalEnemy");
+        }
+        else
+        {
+            gameObject.SetActive(false);
         }
     }
 }
