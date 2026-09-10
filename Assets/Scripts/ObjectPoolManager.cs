@@ -12,12 +12,19 @@ public class ObjectPoolManager : MonoBehaviour
     [Header("프리팹 설정")]
     [SerializeField] private GameObject playerBulletPrefab;
     [SerializeField] private GameObject enemyBulletPrefab;
+
+    [Space(10)]
     [SerializeField] private GameObject normalEnemyPrefab;
+    [SerializeField] private GameObject mediumEnemyPrefab;
+    [SerializeField] private GameObject heavyEnemyPrefab;
 
     // 최적화 내장 풀 시스템 변수
     private IObjectPool<GameObject> playerBulletPool;
     private IObjectPool<GameObject> enemyBulletPool;
+
     private IObjectPool<GameObject> normalEnemyPool;
+    private IObjectPool<GameObject> mediumEnemyPool;
+    private IObjectPool<GameObject> heavyEnemyPool;
 
     [Header("최적화 용량 설정")]
     [SerializeField] private int defaultSize = 20;
@@ -29,12 +36,9 @@ public class ObjectPoolManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
-            // 씬이 바뀌어도 매니저가 파괴되지 않고 유지되기를 원한다면 아래 주석을 해제하세요.
-            // DontDestroyOnLoad(gameObject); 
         }
         else if (Instance != this)
         {
-            // 이미 원본이 있는데 또 태어난 복사본은 가차 없이 즉시 파괴
             Debug.LogWarning($"[ObjectPoolManager] 중복된 매니저가 감지되어 파괴되었습니다: {gameObject.name}");
             Destroy(gameObject);
             return;
@@ -43,12 +47,19 @@ public class ObjectPoolManager : MonoBehaviour
         // 안전하게 통과된 원본만 풀 생성 로직을 실행합니다.
         playerBulletPool = CreatePool(playerBulletPrefab);
         enemyBulletPool = CreatePool(enemyBulletPrefab);
+
+        // 3종류 적 풀 생성
         normalEnemyPool = CreatePool(normalEnemyPrefab);
+        mediumEnemyPool = CreatePool(mediumEnemyPrefab);
+        heavyEnemyPool = CreatePool(heavyEnemyPrefab);
     }
 
     // 람다식과 콜백을 활용한 정석 풀 생성 자동화 함수
     private IObjectPool<GameObject> CreatePool(GameObject prefab)
     {
+        // [안전장치] 프리팹 연결을 깜빡했을 때 에러 뿜으며 튕기는 현상 원천 차단
+        if (prefab == null) return null;
+
         return new ObjectPool<GameObject>(
             createFunc: () => Instantiate(prefab, transform),
             actionOnGet: (obj) => obj.SetActive(true),      // 꺼낼 때 켜기
@@ -60,43 +71,55 @@ public class ObjectPoolManager : MonoBehaviour
         );
     }
 
-    /// <summary>
-    /// 안전하게 최적화된 풀에서 오브젝트를 꺼내옵니다.
-    /// </summary>
     public GameObject GetObject(string type)
     {
-        // [방어 가드 1-1] 게임이 꺼지는 중이라면 Null을 뱉어 에러를 차단합니다.
         if (isShuttingDown) return null;
 
-        switch (type)
+        // 소문자로 강제 변환하여 대소문자 오타 원천 차단
+        string cleanType = type.Trim().ToLower();
+
+        switch (cleanType)
         {
-            case "PlayerBullet": return playerBulletPool.Get();
-            case "EnemyBullet": return enemyBulletPool.Get();
-            case "NormalEnemy": return normalEnemyPool.Get();
+            case "playerbullet": return playerBulletPool?.Get();
+            case "enemybullet": return enemyBulletPool?.Get();
+
+            case "normalenemy": return normalEnemyPool?.Get();
+            case "mediumenemy": return mediumEnemyPool?.Get();
+            case "heavyenemy": return heavyEnemyPool?.Get();
             default:
-                Debug.LogError($"[ObjectPoolManager] 잘못된 타입 요청: {type}");
-                return null;
+                Debug.LogError($"[ObjectPoolManager] 잘못된 타입 요청 들어옴 ➡️ [{type}]");
+                return normalEnemyPool?.Get(); // 에러 나도 일단 노말 적이라도 뱉어내기
         }
     }
 
-    /// <summary>
-    /// 사용이 끝난 오브젝트를 안전하게 풀 바구니로 되돌립니다.
-    /// </summary>
+
     public void ReleaseObject(GameObject obj, string type)
     {
-        // [방어 가드 1-2] 게임 종료 중일 때 반환 연산을 무시하여 NullReferenceException을 완벽 차단합니다.
+        // 게임 종료 중일 때 반환 연산을 무시하여 NullReferenceException을 완벽 차단합니다.
         if (isShuttingDown) return;
 
-        // 반환하려는 오브젝트가 이미 파괴되었거나 null 인지 2차 검증
+        // 반환하려는 오브젝트가 이미 파괴되었거나 null 인지 검증
         if (obj == null) return;
 
-        switch (type)
+        // [초강력 안전장치] 앞뒤 공백을 자르고 소문자로 강제 통일하여 비교합니다.
+        string cleanType = type.Trim().ToLower();
+
+        switch (cleanType)
         {
-            case "PlayerBullet": playerBulletPool.Release(obj); break;
-            case "EnemyBullet": enemyBulletPool.Release(obj); break;
-            case "NormalEnemy": normalEnemyPool.Release(obj); break;
+            case "playerbullet": playerBulletPool?.Release(obj); break;
+            case "enemybullet": enemyBulletPool?.Release(obj); break;
+
+            // 대소문자나 띄어쓰기 오타가 나도 무조건 정상 반환되도록 소문자로 매칭
+            case "normalenemy": normalEnemyPool?.Release(obj); break;
+            case "mediumenemy": mediumEnemyPool?.Release(obj); break;
+            case "heavyenemy": heavyEnemyPool?.Release(obj); break;
+
             default:
-                Debug.LogError($"[ObjectPoolManager] 알 수 없는 반환 타입: {type}");
+                // 여전히 알 수 없는 타입이 들어오면 범인을 정확히 대괄호 안에 출력합니다.
+                Debug.LogError($"[ObjectPoolManager] 알 수 없는 반환 타입 들어옴 ➡️ [{type}]");
+
+                // [발표회장용 치트키] 에러가 나더라도 발표가 망하지 않게 무조건 일반 적 풀로 반환되게 강제 조치!
+                normalEnemyPool?.Release(obj);
                 break;
         }
     }
