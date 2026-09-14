@@ -6,6 +6,9 @@ public class PlayerProjectile : MonoBehaviour
     [SerializeField] private float moveSpeed = 12f; // 플레이어 탄속
     [SerializeField] private float destroyY = 10f;  // 화면 위로 탈출 시 경계선
 
+    // [핵심 추가] 인스펙터에서 탄환 프리팹마다 대미지를 다르게 고칠 수 있게 주머니를 엽니다!
+    [SerializeField] private int damage = 1;
+
     void Update()
     {
         // 절대적인 월드 좌표 기준으로 매 프레임 위로 정직하게 날아갑니다.
@@ -29,8 +32,8 @@ public class PlayerProjectile : MonoBehaviour
 
             if (enemyHp != null)
             {
-                // 정직하게 대미지를 1 입힙니다.
-                enemyHp.TakeDamage(1);
+                // 🎯 고정된 숫자 1 대신, 위에서 설정한 프리팹별 damage 수치를 주입합니다!
+                enemyHp.TakeDamage(damage);
             }
 
             // 적을 맞추면 탄환은 즉시 스스로 삭제(비활성화)됩니다.

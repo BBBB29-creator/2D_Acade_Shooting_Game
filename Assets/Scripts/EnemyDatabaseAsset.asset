@@ -19,7 +19,7 @@ MonoBehaviour:
     score: 100
   - enemyName: Medium
     maxHP: 10
-    moveSpeed: 3
+    moveSpeed: 2
     score: 500
   - enemyName: Heavy
     maxHP: 20
