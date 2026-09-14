@@ -62,7 +62,7 @@ public class NormalEnemyController : MonoBehaviour
         StartCoroutine(SafeInitAttackRoutine());
     }
 
-    // 💡 OnEnable 바로 밑에 새롭게 추가해 줄 안전지연 코루틴 함수입니다.
+    // OnEnable 바로 밑에 새롭게 추가해 줄 안전지연 코루틴 함수입니다.
     private IEnumerator SafeInitAttackRoutine()
     {
         // 유니티 시스템 내부에서 모든 매니저(오브젝트 풀 포함)가 완벽히 셋업될 때까지 딱 1프레임 쉼호흡합니다.
